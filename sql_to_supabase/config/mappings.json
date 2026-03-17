@@ -1,0 +1,82 @@
+[
+  {
+    "table_name": "vw_acomp_matriculados_es",
+    "query_file": "sql_to_supabase/queries/vw_acomp_matriculados_es.sql"
+  },
+  {
+    "table_name": "vw_acomp_ra",
+    "query_file": "sql_to_supabase/queries/vw_acomp_ra.sql"
+  },
+  {
+    "table_name": "tb_dm_universitarios",
+    "query_file": "sql_to_supabase/queries/tb_dm_universitarios.sql"
+  },
+  {
+    "table_name": "tb_dm_graduados",
+    "query_file": "sql_to_supabase/queries/tb_dm_graduados.sql"
+  },
+  {
+    "table_name": "tb_dm_universitarios_brasil_exterior_migracao",
+    "query_file": "sql_to_supabase/queries/tb_dm_universitarios_brasil_exterior_migracao.sql"
+  },
+  {
+    "table_name": "tb_dm_status_meta_global_por_mes",
+    "query_file": "sql_to_supabase/queries/tb_dm_status_meta_global_por_mes.sql"
+  },
+  {
+    "table_name": "tb_dm_top_emp_metaglobal_por_mes",
+    "query_file": "sql_to_supabase/queries/tb_dm_top_emp_metaglobal_por_mes.sql"
+  },
+  {
+    "table_name": "tb_dm_perc_oportuni_inicial",
+    "query_file": "sql_to_supabase/queries/tb_dm_perc_oportuni_inicial.sql"
+  },
+  {
+    "table_name": "tb_dm_perc_oportuni_final",
+    "query_file": "sql_to_supabase/queries/tb_dm_perc_oportuni_final.sql"
+  },
+  {
+    "table_name": "tb_dm_perc_top_emp_oportunidade_inicial",
+    "query_file": "sql_to_supabase/queries/tb_dm_perc_top_emp_oportunidade_inicial.sql"
+  },
+  {
+    "table_name": "tb_dm_perc_top_emp_oportunidade_final",
+    "query_file": "sql_to_supabase/queries/tb_dm_perc_top_emp_oportunidade_final.sql"
+  },
+  {
+    "table_name": "tb_dm_veteranos_calouros",
+    "query_file": "sql_to_supabase/queries/tb_dm_veteranos_calouros.sql"
+  },
+  {
+    "table_name": "tb_dm_percentual_ativos",
+    "query_file": "sql_to_supabase/queries/tb_dm_percentual_ativos.sql"
+  },
+  {
+    "table_name": "tb_dm_perc_top_emp_oportunidade_final",
+    "query_file": "sql_to_supabase/queries/tb_dm_perc_top_emp_oportunidade_final.sql"
+  },
+  {
+    "table_name": "tb_dm_status_meta_anos_iniciais_por_mes",
+    "query_file": "sql_to_supabase/queries/tb_dm_status_meta_anos_iniciais_por_mes.sql"
+  },
+  {
+    "table_name": "tb_dm_top_emp_meta_anos_iniciais_por_mes",
+    "query_file": "sql_to_supabase/queries/tb_dm_top_emp_meta_anos_iniciais_por_mes.sql"
+  },
+  {
+    "table_name": "tb_dm_status_meta_alumni_giveback",
+    "query_file": "sql_to_supabase/queries/tb_dm_status_meta_alumni_giveback.sql"
+  },
+  {
+    "table_name": "tb_dm_calouros_veteranos_entrant_deslig_transf",
+    "query_file": "sql_to_supabase/queries/tb_dm_calouros_veteranos_entrant_deslig_transf.sql"
+  },
+  {
+    "table_name": "vw_universitarios_status",
+    "query_file": "sql_to_supabase/queries/vw_universitarios_status.sql"
+  },
+  {
+    "table_name": "tb_dm_origem",
+    "query_file": "sql_to_supabase/queries/tb_dm_origem.sql"
+  }
+]

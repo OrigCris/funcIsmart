@@ -1,0 +1,14 @@
+# Uncomment to enable Azure Monitor OpenTelemetry
+# Ref: aka.ms/functions-azure-monitor-python
+# azure-monitor-opentelemetry
+
+azure-functions
+requests
+pandas
+azure-storage-blob
+openpyxl
+azure-identity==1.15.0
+azure-keyvault-secrets==4.7.0
+supabase
+pyodbc
+# psycopg2-binary==2.9.9
