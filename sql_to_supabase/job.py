@@ -35,7 +35,7 @@ def get_database_connection():
         database = 'dev-ismart-sql-db'
         username = 'ismart'
         password = 'th!juyep8iFr'
-        driver = "ODBC Driver 17 for SQL Server"
+        driver = "ODBC Driver 18 for SQL Server"
 
         # Build connection string with SQL authentication
         CONNECTION_STRING = (

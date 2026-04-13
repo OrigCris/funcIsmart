@@ -3,6 +3,7 @@ import os
 import azure.functions as func
 from letrus_job import job
 from evolucional_job import job_evo
+from khan_job import job_khan
 from pathlib import Path
 from sql_to_supabase import job as supabase_job
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -14,24 +15,64 @@ app = func.FunctionApp()
 
 @app.blob_trigger(
     arg_name="inputblob",
-    path="plataformas/evolucional/raw/{name}",
-    connection="BLOB_PLAT_CONN_STR"
+    path="plataformas/{name}",
+    connection="BLOB_PLAT_CONN_STR",
+    source="EventGrid"
 )
-def evolucional_job(inputblob: func.InputStream):
+def plataformas_job(inputblob: func.InputStream):
     blob_name = inputblob.name
     file_name = blob_name.split("/")[-1]
 
-    if not file_name.startswith("base_bruta_evo"):
-        logging.info(f"Arquivo ignorado: {file_name}")
-        return
-
-    logging.info(f"Arquivo válido detectado: {file_name}")
+    logging.info(f"Blob recebido: {blob_name}")
 
     try:
-        file_bytes = inputblob.read()
-        base_bruta = pd.read_excel(BytesIO(file_bytes))
+        # =========================================================
+        # EVOLUCIONAL
+        # Ex.: plataformas/evolucional/raw/base_bruta_evo.xlsx
+        # =========================================================
+        if blob_name.startswith("plataformas/evolucional/raw/"):
+            if not file_name.startswith("base_bruta_evo"):
+                logging.info(f"Arquivo ignorado no fluxo evolucional: {file_name}")
+                return
 
-        job_evo.processar_iol_evolucional(base_bruta, file_name)
+            logging.info(f"Arquivo válido do evolucional detectado: {blob_name}")
+
+            file_bytes = inputblob.read()
+            base_bruta = pd.read_excel(BytesIO(file_bytes))
+
+            job_evo.processar_iol_evolucional(base_bruta, file_name)
+            logging.info(f"Processamento evolucional concluído: {file_name}")
+            return
+
+        # =========================================================
+        # KHAN
+        # Ex.: plataformas/khan/raw/khan_progresso_bruta_2026-03-15.csv
+        # =========================================================
+        if blob_name.startswith("plataformas/khan/raw/"):
+            if not file_name.startswith("khan_progresso_bruta_"):
+                logging.info(f"Arquivo ignorado no fluxo khan: {file_name}")
+                return
+
+            logging.info(f"Arquivo válido do khan detectado: {blob_name}")
+
+            file_bytes = inputblob.read()
+
+            try:
+                base_bruta = pd.read_csv(BytesIO(file_bytes), encoding="utf-8")
+            except UnicodeDecodeError:
+                base_bruta = pd.read_csv(BytesIO(file_bytes), encoding="latin1")
+
+            job_khan.processar_iol_khan_progresso(
+                base_bruta=base_bruta,
+                file_name=file_name
+            )
+            logging.info(f"Processamento khan concluído: {file_name}")
+            return
+
+        # =========================================================
+        # OUTROS ARQUIVOS
+        # =========================================================
+        logging.info(f"Blob ignorado fora dos diretórios mapeados: {blob_name}")
 
     except Exception as e:
         logging.exception(f"Erro ao processar {file_name}: {str(e)}")

@@ -1,0 +1,2 @@
+SELECT *
+FROM ismart_cursos_instituicoes

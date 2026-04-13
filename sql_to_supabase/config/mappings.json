@@ -78,5 +78,21 @@
   {
     "table_name": "tb_dm_origem",
     "query_file": "sql_to_supabase/queries/tb_dm_origem.sql"
+  },
+  {
+    "table_name": "ismart_matricula",
+    "query_file": "sql_to_supabase/queries/ismart_matricula.sql"
+  },
+  {
+    "table_name": "ismart_status_mensal",
+    "query_file": "sql_to_supabase/queries/ismart_status_mensal.sql"
+  },
+  {
+    "table_name": "ismart_cursos_instituicoes",
+    "query_file": "sql_to_supabase/queries/ismart_cursos_instituicoes.sql"
+  },
+  {
+    "table_name": "vw_empregabilidade",
+    "query_file": "sql_to_supabase/queries/vw_empregabilidade.sql"
   }
 ]

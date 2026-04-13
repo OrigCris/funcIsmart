@@ -1,0 +1,1 @@
+select id_status_mensal, id_matricula, id_tempo, ra, id_status from ismart_status_mensal
