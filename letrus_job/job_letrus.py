@@ -153,11 +153,13 @@ def corrigir_atvdd(string: str) -> str:
 
     tipos = ["Reescrita", "Escrita"]
 
-    string = string.replace("Atividade 3 - Visibilidade da Mulher na Ci?ncia", "Atividade Abril")
-    string = string.replace("Atividade 01", "Atividade Fevereiro")
-    string = string.replace("Atividade 02", "Atividade Março")
     string = string.replace("ENEM", "")
     string = " ".join(string.split())
+
+    string = string.replace("Atividade 3 - Visibilidade da Mulher na Ci?ncia", "Atividade Abril")
+    string = string.replace("Atividade 3 - Visibilidade da Mulher na Ciência", "Atividade Abril")
+    string = string.replace("Atividade 01", "Atividade Fevereiro")
+    string = string.replace("Atividade 02", "Atividade Março")
 
     classificacao = None
     if re.search(r"reescrita", string, flags=re.IGNORECASE):
