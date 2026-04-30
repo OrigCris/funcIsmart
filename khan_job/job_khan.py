@@ -1,11 +1,20 @@
-import os
-import re
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 import pandas as pd
-import pyodbc
+
+from shared_job_helpers import (
+    buscar_matriculas_mais_recentes as buscar_matriculas_mais_recentes_base,
+    calcular_id_tempo as calcular_id_tempo_base,
+    domingo_anterior as domingo_anterior_base,
+    extrair_data_do_nome_arquivo as extrair_data_do_nome_arquivo_base,
+    get_connection_sqlserver,
+    normalizar_numerico,
+    normalizar_texto,
+    remover_linhas_sem_identificador as remover_linhas_sem_identificador_base,
+    validar_colunas_obrigatorias as validar_colunas_obrigatorias_base,
+)
 
 
 # =========================================================
@@ -19,80 +28,29 @@ CSV_ENCODING = "utf-8"
 # Reaproveitado no mesmo padrão do seu código anterior
 # =========================================================
 def _get_connection_sqlserver():
-    try:
-        logging.info("🟣 Conectando ao SQL Server...")
+    return get_connection_sqlserver()
 
-        server = 'ismart-sql-server.database.windows.net'
-        database = 'dev-ismart-sql-db'
-        username = 'ismart'
-        password = 'th!juyep8iFr'
-        driver = "ODBC Driver 18 for SQL Server"
 
-        conn_str = (
-            f'Driver={{{driver}}};'
-            f'Server={server};'
-            f'Database={database};'
-            f'UID={username};'
-            f'PWD={password};'
-            'Encrypt=yes;'
-            'TrustServerCertificate=no;'
-            'Connection Timeout=30;'
-            'Login Timeout=15;'
-        )
-
-        conn = pyodbc.connect(conn_str)
-        logging.info("✅ Conexão com SQL estabelecida.")
-        return conn
-
-    except Exception as e:
-        logging.exception("Erro ao conectar ao SQL Server: %s", str(e))
-        raise
+def remover_linhas_sem_identificador(df: pd.DataFrame) -> pd.DataFrame:
+    return remover_linhas_sem_identificador_base(
+        df,
+        contexto_log="iol_khan_progresso",
+    )
 
 
 # =========================================================
 # HELPERS DE DATA
 # =========================================================
 def domingo_anterior(data_ref: datetime) -> datetime:
-    """
-    Retorna o domingo anterior/igual à data informada.
-    Ex.:
-    - 10/03/2026 (terça) -> 08/03/2026
-    - 15/03/2026 (domingo) -> 15/03/2026
-    """
-    dias_desde_domingo = (data_ref.weekday() + 1) % 7
-    return (data_ref - timedelta(days=dias_desde_domingo)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    return domingo_anterior_base(data_ref)
 
 
 def calcular_id_tempo(data_ref: datetime) -> int:
-    """
-    Regra:
-    - se a data estiver nos 3 primeiros dias do mês, usar mês anterior
-    - senão, usar mês vigente
-
-    Ex.:
-    03/03/2026 -> 202602
-    08/03/2026 -> 202603
-    """
-    if data_ref.day <= 3:
-        ultimo_dia_mes_anterior = data_ref.replace(day=1) - timedelta(days=1)
-        return int(ultimo_dia_mes_anterior.strftime("%Y%m"))
-    return int(data_ref.strftime("%Y%m"))
+    return calcular_id_tempo_base(data_ref)
 
 
 def extrair_data_do_nome_arquivo(file_name: str) -> datetime:
-    """
-    Extrai a data do padrão:
-    khan_progresso_bruta_YYYY-MM-DD.csv
-    """
-    match = re.search(r'(\d{4}-\d{2}-\d{2})', file_name)
-    if not match:
-        raise ValueError(
-            f"Não foi possível extrair a data do nome do arquivo: {file_name}"
-        )
-
-    return datetime.strptime(match.group(1), "%Y-%m-%d")
+    return extrair_data_do_nome_arquivo_base(file_name)
 
 
 def formatar_coluna_progresso(semana: datetime) -> str:
@@ -109,38 +67,7 @@ def formatar_coluna_progresso(semana: datetime) -> str:
 # HELPERS DE DADOS
 # =========================================================
 def normalizar_ra(serie: pd.Series) -> pd.Series:
-    return serie.astype(str).str.strip()
-
-
-def normalizar_texto(serie: pd.Series) -> pd.Series:
-    return (
-        serie.astype(str)
-        .str.strip()
-        .replace(
-            {
-                "nan": None,
-                "None": None,
-                "": None,
-            }
-        )
-    )
-
-
-def normalizar_numerico(serie: pd.Series) -> pd.Series:
-    return pd.to_numeric(
-        serie.astype(str)
-        .str.strip()
-        .replace(
-            {
-                "nan": None,
-                "None": None,
-                "": None,
-            }
-        )
-        .str.replace("%", "", regex=False)
-        .str.replace(",", ".", regex=False),
-        errors="coerce",
-    )
+    return normalizar_texto(serie).fillna("")
 
 
 def validar_colunas_obrigatorias(df: pd.DataFrame, semana: datetime):
@@ -153,40 +80,14 @@ def validar_colunas_obrigatorias(df: pd.DataFrame, semana: datetime):
         col_progresso,
     ]
 
-    faltantes = [c for c in colunas_obrigatorias if c not in df.columns]
-    if faltantes:
-        raise ValueError(
-            f"Colunas obrigatórias ausentes no CSV: {faltantes}"
-        )
+    validar_colunas_obrigatorias_base(df, colunas_obrigatorias, origem="o CSV do Khan")
 
 
 # =========================================================
 # BUSCA id_matricula MAIS RECENTE
 # =========================================================
 def buscar_matriculas_mais_recentes(conn) -> pd.DataFrame:
-    """
-    Para cada RA, pega o id_matricula vinculado ao maior id_tempo.
-    """
-    query = """
-    WITH cte AS (
-        SELECT
-            CAST(ra AS VARCHAR(100)) AS ra,
-            id_matricula,
-            id_tempo,
-            ROW_NUMBER() OVER (
-                PARTITION BY CAST(ra AS VARCHAR(100))
-                ORDER BY id_tempo DESC, id_matricula DESC
-            ) AS rn
-        FROM ismart_matricula
-    )
-    SELECT ra, id_matricula
-    FROM cte
-    WHERE rn = 1
-    """
-
-    matriculas = pd.read_sql(query, conn)
-    matriculas["ra"] = matriculas["ra"].astype(str).str.strip()
-    return matriculas
+    return buscar_matriculas_mais_recentes_base(conn)
 
 
 # =========================================================
@@ -341,12 +242,7 @@ def processar_iol_khan_progresso(
         df_final = montar_dataframe_final_khan(base_bruta, conn, file_name)
 
         if remover_sem_id_matricula:
-            qtd_antes = len(df_final)
-            df_final = df_final[~df_final["id_matricula"].isna()].copy()
-            logging.info(
-                "Linhas sem id_matricula removidas: %s",
-                qtd_antes - len(df_final)
-            )
+            df_final = remover_linhas_sem_identificador(df_final)
 
         gravar_iol_khan_progresso(df_final, conn)
 
