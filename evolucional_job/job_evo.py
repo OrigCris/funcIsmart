@@ -1,94 +1,44 @@
-import os
-import re
 import logging
-from io import BytesIO
-from datetime import datetime, timedelta
-from azure.storage.blob import BlobServiceClient
-import azure.functions as func
+from datetime import datetime
+
 import pandas as pd
-import pyodbc
 
-BLOB_PLAT_CONN_STR = os.getenv('BLOB_PLAT_CONN_STR')
-
+from shared_job_helpers import (
+    buscar_matriculas_mais_recentes as buscar_matriculas_mais_recentes_base,
+    calcular_id_tempo as calcular_id_tempo_base,
+    domingo_anterior as domingo_anterior_base,
+    extrair_data_do_nome_arquivo as extrair_data_do_nome_arquivo_base,
+    get_connection_sqlserver,
+    normalizar_numerico as normalizar_numerico_base,
+    remover_linhas_sem_identificador as remover_linhas_sem_identificador_base,
+    validar_colunas_obrigatorias,
+)
 
 def _get_connection_sqlserver():
-    try:
-        logging.info("🟣 Conectando ao SQL Server...")
+    return get_connection_sqlserver()
 
-        server = 'ismart-sql-server.database.windows.net'
-        database = 'dev-ismart-sql-db'
-        username = 'ismart'
-        password = 'th!juyep8iFr'
-        driver = "ODBC Driver 18 for SQL Server"
 
-        conn_str = (
-            f'Driver={{{driver}}};'
-            f'Server={server};'
-            f'Database={database};'
-            f'UID={username};'
-            f'PWD={password};'
-            'Encrypt=yes;'
-            'TrustServerCertificate=no;'
-            'Connection Timeout=30;'
-            'Login Timeout=15;'
-        )
-
-        conn = pyodbc.connect(conn_str)
-        logging.info("✅ Conexão com SQL estabelecida.")
-        return conn
-
-    except Exception as e:
-        logging.exception("Erro ao conectar ao SQL Server: %s", str(e))
-        raise
+def remover_linhas_sem_identificador(df: pd.DataFrame) -> pd.DataFrame:
+    return remover_linhas_sem_identificador_base(
+        df,
+        contexto_log="iol_evolucional",
+    )
 
 
 def extrair_data_do_nome_arquivo(file_name: str) -> datetime:
-    """
-    Extrai a data do nome do arquivo no padrão YYYY-MM-DD.
-    Ex.:
-    - base_bruta_evo_2026-03-17.xlsx
-    - evolucional_2026-03-17.xlsx
-    """
-    match = re.search(r'(\d{4}-\d{2}-\d{2})', file_name)
-    if not match:
-        raise ValueError(
-            f"Não foi possível extrair a data do nome do arquivo: {file_name}"
-        )
-
-    return datetime.strptime(match.group(1), "%Y-%m-%d")
+    return extrair_data_do_nome_arquivo_base(file_name)
 
 
 def domingo_anterior(data_ref: datetime) -> datetime:
-    # Ex.: se data_ref = 17/03/2026 (terça), retorna 15/03/2026
-    dias_desde_domingo = (data_ref.weekday() + 1) % 7
-    return (data_ref - timedelta(days=dias_desde_domingo)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    return domingo_anterior_base(data_ref)
 
 
 def calcular_id_tempo(data_ref: datetime) -> int:
-    if data_ref.day <= 3:
-        ultimo_dia_mes_anterior = data_ref.replace(day=1) - timedelta(days=1)
-        return int(ultimo_dia_mes_anterior.strftime("%Y%m"))
-    return int(data_ref.strftime("%Y%m"))
+    return calcular_id_tempo_base(data_ref)
 
 
 def normalizar_numerico(serie: pd.Series) -> pd.Series:
-    return pd.to_numeric(
-        serie.astype(str)
-        .str.strip()
-        .replace(
-            {
-                "Sem seleção": "0",
-                "nan": None,
-                "None": None,
-                "": None,
-            }
-        )
-        .str.replace("%", "", regex=False)
-        .str.replace(",", ".", regex=False),
-        errors="coerce",
-    )
+    return normalizar_numerico_base(serie, replacements={"Sem seleção": "0"})
 
 
 def aplicar_regra_1(base_bruta: pd.DataFrame) -> pd.DataFrame:
@@ -160,28 +110,7 @@ def aplicar_regra_2(base_bruta: pd.DataFrame, conn, data_arquivo: datetime) -> p
 
 
 def buscar_matriculas_mais_recentes(conn) -> pd.DataFrame:
-    """
-    Para cada RA, pega o id_matricula vinculado ao maior id_tempo.
-    """
-    query = """
-    WITH cte AS (
-        SELECT
-            CAST(ra AS VARCHAR(100)) AS ra,
-            id_matricula,
-            id_tempo,
-            ROW_NUMBER() OVER (
-                PARTITION BY CAST(ra AS VARCHAR(100))
-                ORDER BY id_tempo DESC, id_matricula DESC
-            ) AS rn
-        FROM ismart_matricula
-    )
-    SELECT ra, id_matricula
-    FROM cte
-    WHERE rn = 1
-    """
-    matriculas = pd.read_sql(query, conn)
-    matriculas["ra"] = matriculas["ra"].astype(str).str.strip()
-    return matriculas
+    return buscar_matriculas_mais_recentes_base(conn)
 
 
 def montar_dataframe_final(base_bruta: pd.DataFrame, conn, file_name: str) -> pd.DataFrame:
@@ -197,9 +126,11 @@ def montar_dataframe_final(base_bruta: pd.DataFrame, conn, file_name: str) -> pd
         "Desafio",
     ]
 
-    faltantes = [c for c in colunas_esperadas if c not in base_bruta.columns]
-    if faltantes:
-        raise ValueError(f"Colunas obrigatórias ausentes no Excel: {faltantes}")
+    validar_colunas_obrigatorias(
+        base_bruta,
+        colunas_esperadas,
+        origem="o Excel do Evolucional",
+    )
 
     data_arquivo = extrair_data_do_nome_arquivo(file_name)
 
@@ -314,12 +245,7 @@ def processar_iol_evolucional(base_bruta: pd.DataFrame, file_name: str = None):
         conn = _get_connection_sqlserver()
 
         df_final = montar_dataframe_final(base_bruta, conn, file_name)
-        df_final = df_final[~df_final['id_matricula'].isna()].copy()
-
-        logging.info(
-            "Linhas sem id_matricula removidas: %s",
-            len(montar_dataframe_final(base_bruta, conn, file_name)) - len(df_final)
-        )
+        df_final = remover_linhas_sem_identificador(df_final)
 
         gravar_iol_evolucional(df_final, conn)
 
