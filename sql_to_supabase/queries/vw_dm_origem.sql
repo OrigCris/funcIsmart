@@ -1,0 +1,22 @@
+SELECT
+    id_tempo,
+    id_status,
+    ra,
+    status,
+    id_matricula,
+    id_projeto,
+    data_inicio_curso,
+    data_prevista_termino_curso,
+    informacoes_contrato,
+    mes,
+    ano,
+    tipo_aluno,
+    flg_universitario,
+    flg_ativo_nao_ativo,
+    flg_calouro_veterano,
+    flg_calouro_entrantes,
+    flg_desligados,
+    flg_desistente,
+    flg_formandos,
+    transferencia
+FROM dbo.vw_dm_origem
