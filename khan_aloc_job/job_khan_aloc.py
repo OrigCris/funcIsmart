@@ -16,26 +16,6 @@ from shared_job_helpers import (
 
 TARGET_TABLE = "iol_khan_aloc"
 SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
-VALORES_META_NULOS = {
-    "-",
-    "--",
-    "n/a",
-    "na",
-    "nan",
-    "nenhum",
-    "none",
-    "null",
-    "sem dominio recomendado",
-    "sem dominio recomendada",
-    "sem domínio recomendado",
-    "sem domínio recomendada",
-    "Sem meta de domínio",
-    "sem meta",
-    "sem meta de dominio",
-    "sem meta de domínio",
-    "sem recomendacao",
-    "sem recomendação",
-}
 
 
 REGRAS_CURSO: dict[tuple[str, str], dict[str, int]] = {
@@ -128,12 +108,6 @@ def normalizar_inteiro(serie: pd.Series) -> pd.Series:
     )
 
 
-def normalizar_meta_recomendada(serie: pd.Series) -> pd.Series:
-    normalizada = serie.astype(str).str.strip()
-    valores_nulos = {str(valor).strip().lower() for valor in VALORES_META_NULOS}
-    return normalizada.mask(normalizada.str.lower().isin(valores_nulos))
-
-
 def remover_linhas_sem_identificador(df: pd.DataFrame) -> pd.DataFrame:
     return remover_linhas_sem_identificador_base(
         df,
@@ -199,6 +173,32 @@ def classificar_curso(curso_alocado: str, serie: str) -> dict[str, Optional[int]
     return {"curso_superior": None, "bncc": None}
 
 
+def carregar_cursos_validos(conn) -> set[str]:
+    """
+    Busca dinamicamente os cursos válidos a partir de iol_khan_progresso.
+    Qualquer valor de 'Meta de domínio recomendada' que não estiver nesse set
+    será tratado como nulo e o aluno cairá na regra da semana anterior.
+    """
+    sql = """
+        SELECT DISTINCT curso_khan_progresso
+        FROM iol_khan_progresso
+        WHERE id_tempo >= 202601
+          AND curso_khan_progresso IS NOT NULL
+    """
+    df = pd.read_sql(sql, conn)
+    return set(df["curso_khan_progresso"].str.strip().dropna().tolist())
+
+
+def normalizar_meta_recomendada(serie: pd.Series, cursos_validos: set[str]) -> pd.Series:
+    """
+    Normaliza a coluna 'Meta de domínio recomendada'.
+    Retorna None para valores nulos ou que não estejam na lista de cursos válidos do SQL.
+    """
+    normalizada = serie.astype(str).str.strip()
+    mask_invalida = ~normalizada.isin(cursos_validos) | serie.isna()
+    return normalizada.mask(mask_invalida)
+
+
 def carregar_dimensoes_sql(conn, id_tempo_serie: int) -> pd.DataFrame:
     sql_nome_ra = """
         SELECT
@@ -252,7 +252,7 @@ def carregar_dimensoes_sql(conn, id_tempo_serie: int) -> pd.DataFrame:
     return df_lookup[["nome_key", "ra", "id_matricula", "serie"]]
 
 
-def preparar_base_atual(df_bruto: pd.DataFrame, semana_atual: date) -> pd.DataFrame:
+def preparar_base_atual(df_bruto: pd.DataFrame, semana_atual: date, cursos_validos: set[str]) -> pd.DataFrame:
     base = normalizar_colunas(df_bruto)
     validar_colunas_necessarias(base)
     base["data_arquivo_convertida"] = base["Data"].apply(converter_para_data)
@@ -266,11 +266,18 @@ def preparar_base_atual(df_bruto: pd.DataFrame, semana_atual: date) -> pd.DataFr
     coluna_meta = next(
         coluna for coluna in base.columns if str(coluna).strip().startswith("Meta de dom")
     )
+
+    # 2° Tratamento: nulos reais + valores fora dos cursos válidos do SQL → tratados como nulos
+    # Alunos com meta inválida são removidos aqui e cairão na regra da semana anterior (3° Tratamento)
+    base[coluna_meta] = normalizar_meta_recomendada(base[coluna_meta], cursos_validos)
     base = base[base[coluna_meta].notna()].copy()
-    base[coluna_meta] = base[coluna_meta].astype(str).str.strip()
-    base = base[base[coluna_meta] != ""].copy()
-    base[coluna_meta] = normalizar_meta_recomendada(base[coluna_meta])
-    base = base[base[coluna_meta].notna()].copy()
+
+    qtd_invalidos = len(base[base[coluna_meta].isna()]) if coluna_meta in base.columns else 0
+    if qtd_invalidos:
+        logging.info(
+            "%s alunos com meta inválida ou fora dos cursos válidos — serão replicados da semana anterior.",
+            qtd_invalidos,
+        )
 
     base["semana"] = semana_atual
     base["curso_alocado"] = base[coluna_meta].astype(str).str.strip()
@@ -295,10 +302,12 @@ def enriquecer_com_ra_matricula_serie(df_atual: pd.DataFrame, df_lookup: pd.Data
     qtd_sem_regra = int(sem_regra.sum())
     if qtd_sem_regra:
         logging.warning(
-            "Linhas com curso/serie fora da REGRAS_CURSO. Elas serão tratadas como nulas e cairão na regra de semana anterior: %s",
+            "Linhas com curso/serie fora da REGRAS_CURSO: %s. Serão removidas e replicadas da semana anterior.",
             qtd_sem_regra,
         )
 
+    # Remove linhas sem classificação — bncc e curso_superior são NOT NULL no SQL Server
+    # Esses alunos cairão no 3° Tratamento (replicados da semana anterior)
     return base[~sem_regra].copy()
 
 
@@ -387,8 +396,8 @@ def complementar_com_semana_anterior(conn, df_atual: pd.DataFrame, semana_atual:
     df_faltantes["id_matricula"] = normalizar_inteiro(df_faltantes["id_matricula"])
     df_faltantes["ra"] = normalizar_inteiro(df_faltantes["ra"])
     df_faltantes["id_tempo"] = normalizar_inteiro(df_faltantes["id_tempo"])
-    df_faltantes["curso_superior"] = pd.to_numeric(df_faltantes["curso_superior"], errors="coerce").fillna(0)
-    df_faltantes["bncc"] = pd.to_numeric(df_faltantes["bncc"], errors="coerce").fillna(0)
+    df_faltantes["curso_superior"] = pd.to_numeric(df_faltantes["curso_superior"], errors="coerce")
+    df_faltantes["bncc"] = pd.to_numeric(df_faltantes["bncc"], errors="coerce")
 
     df_final = pd.concat(
         [
@@ -407,7 +416,11 @@ def montar_dataframe_final_khan_aloc(
     file_name: str,
 ) -> pd.DataFrame:
     semana_atual = extrair_data_do_nome_arquivo(file_name)
-    df_atual = preparar_base_atual(base_bruta, semana_atual)
+
+    # Busca cursos válidos dinamicamente no SQL antes de qualquer tratamento
+    cursos_validos = carregar_cursos_validos(conn)
+
+    df_atual = preparar_base_atual(base_bruta, semana_atual, cursos_validos)
 
     if df_atual.empty:
         return pd.DataFrame(
@@ -427,8 +440,6 @@ def gravar_iol_khan_aloc(df_final: pd.DataFrame, conn):
         return
 
     cursor = conn.cursor()
-    # Evita truncamento de strings no bind do pyodbc quando os tamanhos
-    # variam entre as linhas durante o executemany.
     cursor.fast_executemany = False
     semana_ref = df_final["semana"].iloc[0]
 
