@@ -1,1 +1,20 @@
-select * from vw_acomp_ra
+SELECT
+    ra,
+    status_contrato,
+    segmentacao_pendentes,
+    status_meta,
+    pesquisa,
+    respondeu,
+    comecou_pesquisa,
+    data_resposta_ra,
+    pediu_bolsa,
+    area_curso,
+    tipo_universidade,
+    curso_agregado,
+    universidade,
+    local_agregado,
+    turno,
+    genero,
+    raca,
+    praca_sigla
+FROM vw_acomp_ra
