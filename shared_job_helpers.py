@@ -6,6 +6,7 @@ from typing import Iterable, Optional
 
 import pandas as pd
 import pyodbc
+import requests
 
 
 def get_connection_sqlserver():
@@ -106,6 +107,31 @@ def validar_colunas_obrigatorias(
     faltantes = [coluna for coluna in colunas_obrigatorias if coluna not in df.columns]
     if faltantes:
         raise ValueError(f"Colunas obrigatorias ausentes em {origem}: {faltantes}")
+
+
+def notify_slack(message: str, *, webhook_url: Optional[str] = None) -> bool:
+    """Envia uma mensagem para o Slack via Incoming Webhook.
+
+    URL é lida da env var SLACK_WEBHOOK_URL se não passada explicitamente.
+    Retorna True em sucesso, False caso contrário (sem levantar exceção —
+    notificação não pode quebrar o job).
+    """
+    url = webhook_url or os.getenv("SLACK_WEBHOOK_URL")
+    if not url:
+        logging.warning("SLACK_WEBHOOK_URL não configurada; notificação ignorada.")
+        return False
+
+    try:
+        resp = requests.post(url, json={"text": message}, timeout=10)
+        if resp.status_code == 200:
+            return True
+        logging.error(
+            "Slack webhook respondeu %s: %s", resp.status_code, resp.text[:300]
+        )
+        return False
+    except Exception as exc:
+        logging.exception("Falha ao enviar notificação Slack: %s", str(exc))
+        return False
 
 
 def buscar_matriculas_mais_recentes(conn) -> pd.DataFrame:

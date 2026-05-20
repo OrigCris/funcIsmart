@@ -4,9 +4,35 @@ from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 import logging, os, pyodbc, requests
 from supabase import create_client, Client
-from datetime import date, datetime
+from datetime import date, datetime, time
+from decimal import Decimal
+from uuid import UUID
 
 KEY_VAULT_NAME = os.environ["KEY_VAULT_NAME"]
+
+
+# Mapeamento de tipos Python (do pyodbc cursor.description) para tipos Postgres
+# usado pela função RPC `ensure_columns` do Supabase.
+_PY_TO_PG_TYPE = {
+    bool: "boolean",
+    int: "bigint",
+    float: "double precision",
+    Decimal: "numeric",
+    datetime: "timestamp",
+    date: "date",
+    time: "time",
+    bytes: "bytea",
+    bytearray: "bytea",
+    UUID: "uuid",
+    str: "text",
+}
+
+
+def _map_pyodbc_type_to_pg(py_type) -> str:
+    """Mapeia um tipo Python (vindo de cursor.description) para o tipo Postgres."""
+    if py_type is None:
+        return "text"
+    return _PY_TO_PG_TYPE.get(py_type, "text")
 
 
 def serialize_value(v):
@@ -100,6 +126,58 @@ def send_to_supabase(records: list, table_name: str):
         logging.error(f"❌ Error sending data to Supabase: {str(e)}")
         raise
 
+def ensure_supabase_columns(table_name: str, cursor_description) -> None:
+    """Garante que toda coluna retornada pela query exista no Supabase.
+
+    Compara as colunas vindas do `cursor.description` do SQL Server com as
+    colunas existentes na tabela do Supabase (descobertas via SELECT * LIMIT 1).
+    Para cada coluna faltante, chama a RPC `ensure_columns` para criá-la.
+    """
+    if not cursor_description:
+        return
+
+    source_columns = [
+        (col[0], _map_pyodbc_type_to_pg(col[1])) for col in cursor_description
+    ]
+
+    try:
+        supabase = get_supabase_client()
+        sample = supabase.table(table_name).select("*").limit(1).execute()
+
+        if sample.data:
+            existing = set(sample.data[0].keys())
+        else:
+            # Tabela vazia (caso comum logo após `clear_supabase_table`): mandamos
+            # toda a lista de colunas; a RPC `ensure_columns` usa `if not exists`
+            # então é idempotente para colunas já existentes.
+            existing = set()
+
+        missing = [
+            {"name": name, "type": pg_type}
+            for name, pg_type in source_columns
+            if name not in existing
+        ]
+
+        if not missing:
+            return
+
+        logging.info(
+            f"🧬 Sincronizando schema de '{table_name}': adicionando "
+            f"{len(missing)} coluna(s) -> {[c['name'] for c in missing]}"
+        )
+
+        supabase.rpc(
+            "ensure_columns",
+            {"p_table": table_name, "p_columns": missing},
+        ).execute()
+
+        logging.info(f"✅ Schema de '{table_name}' sincronizado.")
+
+    except Exception as e:
+        logging.error(f"❌ Erro ao sincronizar schema de '{table_name}': {str(e)}")
+        raise
+
+
 def clear_supabase_table(table_name: str):
     """Apaga todos os registros da tabela no Supabase de forma genérica e segura."""
     try:
@@ -142,15 +220,18 @@ def insert_enriched_data(table_name: str, query: str) -> None:
         cursor = conn.cursor()
         cursor.execute(query)
 
-        columns = [column[0] for column in cursor.description]
+        description = cursor.description
+        columns = [column[0] for column in description]
         rows = cursor.fetchall()
-        
+
         results = [
             {col: serialize_value(val) for col, val in zip(columns, row)}
             for row in rows
         ]
 
         logging.info(f"📊 {len(results)} registros obtidos de '{table_name}'")
+
+        ensure_supabase_columns(table_name, description)
 
         send_to_supabase(results, table_name)
 

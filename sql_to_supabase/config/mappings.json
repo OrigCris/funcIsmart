@@ -76,7 +76,7 @@
     "query_file": "sql_to_supabase/queries/vw_universitarios_status.sql"
   },
   {
-    "table_name": "vw_dm_origem",
+    "table_name": "tb_dm_origem",
     "query_file": "sql_to_supabase/queries/vw_dm_origem.sql"
   },
   {
@@ -94,5 +94,9 @@
   {
     "table_name": "vw_empregabilidade",
     "query_file": "sql_to_supabase/queries/vw_empregabilidade.sql"
+  },
+  {
+    "table_name": "vw_formados_grafico",
+    "query_file": "sql_to_supabase/queries/vw_formados_grafico.sql"
   }
 ]
