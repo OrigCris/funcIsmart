@@ -257,7 +257,9 @@ def query_engajamento_redacao(conn, id_tempo_ano: int) -> pd.DataFrame:
     """Engajamento redação (já em 0–1).
 
     Atividade só conta quando há pelo menos 1 Escrita E 1 Reescrita
-    no mesmo atividade_mes, ambas sem motivo_zeramento.
+    no mesmo atividade_mes. Zeros por cópia/plágio são descartados;
+    zeros por outros motivos (texto insuficiente, fuga ao tema, etc.)
+    contam como engajamento — baixo desempenho ≠ desengajamento.
     """
     query = """
     WITH ultima_semana AS (
@@ -276,6 +278,8 @@ def query_engajamento_redacao(conn, id_tempo_ano: int) -> pd.DataFrame:
           AND m.id_projeto IN (2, 5)
     ),
     redacao_filtrada AS (
+        -- Underscore (_) no LIKE casa 1 caractere — pega "copia"/"cópia"
+        -- e "plagio"/"plágio" sem precisar normalizar acento.
         SELECT
             r.ra,
             r.atividade_mes,
@@ -283,9 +287,10 @@ def query_engajamento_redacao(conn, id_tempo_ano: int) -> pd.DataFrame:
         FROM iol_redacao r
         CROSS JOIN ultima_semana us
         WHERE r.semana = us.semana
-          AND (r.motivo_zeramento IS NULL
-               OR r.motivo_zeramento = ''
-               OR r.motivo_zeramento = 'nan')
+          AND NOT (
+                LOWER(r.motivo_zeramento) LIKE '%c_pia%'
+             OR LOWER(r.motivo_zeramento) LIKE '%pl_gio%'
+          )
     ),
     atividades_completas AS (
         SELECT

@@ -11,7 +11,9 @@ import pandas as pd
 
 from evolucional_job import job_evo
 from khan_aloc_job import job_khan_aloc
+from khan_dados_gerais_job import job_khan_dados_gerais
 from khan_job import job_khan
+from khan_khanmigo_job import job_khan_khanmigo
 from letrus_job import job_letrus
 
 
@@ -64,6 +66,56 @@ def dispatch(inputblob: func.InputStream) -> None:
                 file_name=file_name
             )
             logging.info(f"Processamento khan concluído: {file_name}")
+            return
+
+        # =========================================================
+        # KHAN / KHANMIGO
+        # Ex.: plataformas/khan/raw_khanmigo/khan_khanmigo_bruta_2026-04-26.csv
+        # =========================================================
+        if blob_name.startswith("plataformas/khan/raw_khanmigo/"):
+            if not file_name.startswith("khan_khanmigo_bruta_"):
+                logging.info(f"Arquivo ignorado no fluxo khan_khanmigo: {file_name}")
+                return
+
+            logging.info(f"Arquivo válido do khan_khanmigo detectado: {blob_name}")
+
+            file_bytes = inputblob.read()
+
+            try:
+                base_bruta = pd.read_csv(BytesIO(file_bytes), encoding="utf-8-sig")
+            except UnicodeDecodeError:
+                base_bruta = pd.read_csv(BytesIO(file_bytes), encoding="latin1")
+
+            job_khan_khanmigo.processar_iol_khan_khanmigo(
+                base_bruta=base_bruta,
+                file_name=file_name
+            )
+            logging.info(f"Processamento khan_khanmigo concluído: {file_name}")
+            return
+
+        # =========================================================
+        # KHAN / DADOS GERAIS
+        # Ex.: plataformas/khan/raw_geral/khan_geral_bruta_2026-04-26.csv
+        # =========================================================
+        if blob_name.startswith("plataformas/khan/raw_geral/"):
+            if not file_name.startswith("khan_geral_bruta_"):
+                logging.info(f"Arquivo ignorado no fluxo khan_dados_gerais: {file_name}")
+                return
+
+            logging.info(f"Arquivo válido do khan_dados_gerais detectado: {blob_name}")
+
+            file_bytes = inputblob.read()
+
+            try:
+                base_bruta = pd.read_csv(BytesIO(file_bytes), encoding="utf-8-sig")
+            except UnicodeDecodeError:
+                base_bruta = pd.read_csv(BytesIO(file_bytes), encoding="latin1")
+
+            job_khan_dados_gerais.processar_iol_khan_dados_gerais(
+                base_bruta=base_bruta,
+                file_name=file_name
+            )
+            logging.info(f"Processamento khan_dados_gerais concluído: {file_name}")
             return
 
         # =========================================================
