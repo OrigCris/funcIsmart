@@ -1,3 +1,15 @@
+name: Build and deploy Python project to Azure Function App - funcIsmart
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  PYTHON_VERSION: '3.11'
+
 jobs:
   build:
     runs-on: ubuntu-latest
